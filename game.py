@@ -8,17 +8,11 @@ import json
 import random
 import sys
 def print_banner():
-    """Выводит ASCII-баннер."""
-    banner = r"""
-  ____             _      __  __           _       _
- |  _ \           (_)    |  \/  |         | |     | |
- | |_) |_   _ _ __ _ ___ | \  / | __ _ ___| |_ ___| | __
- |  _ <| | | | '__| / __|| |\/| |/ _` / __| __/ __| |/ /
- | |_) | |_| | |  | \__ \| |  | | (_| \__ \ || (__|   <
- |____/ \__,_|_|  |_|___/|_|  |_|\__,_|___/\__\___|_|\_\
-          ПОСЛЕДНИЙ СВЕТ
-"""
-    print(banner)
+    """Выводит ASCII-баннер «ПОСЛЕДНИЙ СВЕТ»."""
+    print("╔════════════════════════════════════╗")
+    print("║       ПОСЛЕДНИЙ СВЕТ               ║")
+    print("║   ~~~ Выживай. Строй. Побеждай. ~~~║")
+    print("╚════════════════════════════════════╝")
 class GameState:
     def __init__(self, seed, perk):
         self.rng = random.Random(seed)
@@ -298,9 +292,12 @@ def cmd_raid(state, energy_spent, rival_id):
         state.scrap += scrap_take
         state.fuel += fuel_take
         state.food += food_take
-        # Можно подчинить или уничтожить
-        # Подчинение при победе в бою при attack_power >= defense_power
-        if attack_power >= defense_power:
+        # Уничтожение: если у соперника 0 дронов и уровень 1
+        if rival["drones"] == 0 and rival["level"] == 1:
+            rival["destroyed"] = True
+            rival["hostile"] = False
+            state.events.append(f"Рейд на '{rival['name']}' ПОБЕДА! Соперник УНИЧТОЖЕН.")
+        elif attack_power >= defense_power:
             rival["subjugated"] = True
             state.events.append(f"Рейд на '{rival['name']}' ПОБЕДА! Соперник подчинён. Получено: +{scrap_take} лом, +{fuel_take} топливо, +{food_take} еда")
             state.tribute_scrap += 1  # дань +1 лом/ход
@@ -367,6 +364,28 @@ def process_rivals(state):
         # "Теплицы" рейдят только от отчаяния
         if rival["name"] == "Теплицы" and rival["food"] < rival["crew"]:
             rival["hostile"] = True
+        # Рейд соперника на игрока (v2)
+        if (rival["hostile"] and rival["drones"] > 0 and
+                rival["drones"] > state.drones and
+                state.turn >= 16 and state.turn % 6 == 0):
+            r_attack = rival["drones"] * 2
+            r_defense = state.drones * 2 + state.level
+            if r_attack + r_defense > 0:
+                r_win_chance = r_attack / (r_attack + r_defense)
+            else:
+                r_win_chance = 0.5
+            if state.rng.random() < r_win_chance:
+                drone_loss = state.rng.randint(0, max(0, state.drones // 2))
+                state.drones -= drone_loss
+                loss_scrap = state.scrap // 16
+                loss_fuel = state.fuel // 16
+                loss_food = state.food // 16
+                state.scrap -= loss_scrap
+                state.fuel -= loss_fuel
+                state.food -= loss_food
+                state.events.append(f"РЕЙД! '{rival['name']}' атаковал и победил! Потеряно дронов: {drone_loss}, ресурсов: {loss_scrap}л, {loss_fuel}т, {loss_food}е.")
+            else:
+                state.events.append(f"РЕЙД! '{rival['name']}' атаковал, но был отбит. Потерь нет.")
 def process_events(state):
     """Обработка случайных событий (~25% хода)."""
     if state.rng.random() < 0.25:
